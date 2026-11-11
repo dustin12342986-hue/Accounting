@@ -1,0 +1,1409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Accounting</title>
+
+<!-- ===========================================================================
+     ACCOUNTING: built on the single-file App Starter Kit.
+     Sibling to Adulting, Businessing and Remembering. Keeps business money and
+     household money apart: split each client payment on payday, import bank
+     statements and see where every dollar went, and watch installment plans
+     wind down.
+
+     Same Google Client ID as the sibling apps (inherited automatically).
+     Two workspaces: "Mine" (private, synced to your own Google Drive app
+     storage) and "Family" (shared, synced through the Accounting Family
+     Worker so both partners see the same numbers).
+
+     One external script besides Google sign-in: pdf.js, loaded from jsDelivr
+     ONLY when you import a PDF statement.
+     =========================================================================== -->
+
+<link rel="manifest" href="./manifest.json">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="theme-color" content="#2f6f62">
+<style>
+  /* One accent (ledger green), used sparingly. "Needs attention" is a soft
+     amber. No alarm red anywhere. */
+  :root, html[data-theme="light"] {
+    --bg:#f5f6f4; --surface:#ffffff; --surface-2:#eef0ed;
+    --border:#e1e4df; --text:#22282a; --muted:#59625f; --faint:#8a928f;
+    --accent:#2f6f62; --accent-soft:#e3efeb;
+    --attention:#a8792f; --attention-soft:#f5eddf;
+    --bar:#9fbcb4; --bar-2:#cfd8d4;
+    --radius:14px; --shadow:0 1px 3px rgba(20,30,30,0.06);
+  }
+  html[data-theme="dark"] {
+    --bg:#131817; --surface:#1b2120; --surface-2:#222a28;
+    --border:#2d3633; --text:#e6ebe9; --muted:#a6b1ad; --faint:#7d8884;
+    --accent:#74b8a6; --accent-soft:#233531;
+    --attention:#d4a95e; --attention-soft:#33291a;
+    --bar:#4f7f73; --bar-2:#34403d;
+    --shadow:0 1px 3px rgba(0,0,0,0.35);
+  }
+  html[data-theme="bland"] {
+    --bg:#f4f5f6; --surface:#ffffff; --surface-2:#eceef0;
+    --border:#e2e4e7; --text:#2b2f36; --muted:#606670; --faint:#949aa4;
+    --accent:#5f6670; --accent-soft:#eceef1;
+    --attention:#93836a; --attention-soft:#efece4;
+    --bar:#b5bac2; --bar-2:#dde0e4;
+    --shadow:0 1px 3px rgba(20,30,50,0.05);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: ui-rounded, "SF Pro Rounded", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); font-size: 17px; line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 18px 16px 90px; }
+  h1 { font-size: 25px; margin: 0; letter-spacing: -0.01em; }
+  h3 { margin: 0 0 12px; }
+  .muted { color: var(--muted); }
+  .faint { color: var(--faint); }
+  .hint { color: var(--faint); font-size: 13px; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .between { justify-content: space-between; }
+  .wrapline { flex-wrap: wrap; }
+  .grow { flex: 1; min-width: 0; }
+  .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .attn { color: var(--attention); }
+
+  /* Header */
+  .hdr { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .hdr-title { display: flex; align-items: center; gap: 10px; }
+  .hdr-mark { width: 34px; height: 34px; border-radius: 9px; }
+  .ws { white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 999px; padding: 6px 12px; font-size: 14px; font-family: inherit; cursor: pointer; }
+  .ws b { color: var(--accent); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 15px 17px; box-shadow: var(--shadow); margin-bottom: 11px; }
+  .card.attn-card { border-color: var(--attention); background: var(--attention-soft); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 11px; }
+  .tile { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 13px 15px; }
+  .tile .lbl { color: var(--muted); font-size: 13px; }
+  .tile .big { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .tile.attn-tile { border-color: var(--attention); }
+  .tile.attn-tile .big { color: var(--attention); }
+
+  .btn-primary { background: var(--accent); color: #fff; border: none; padding: 11px 18px; border-radius: 10px; font-size: 15px; cursor: pointer; font-weight: 700; font-family: inherit; }
+  html[data-theme="dark"] .btn-primary { color: #10201c; }
+  .btn-sm { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 7px 13px; border-radius: 9px; font-size: 14px; cursor: pointer; font-family: inherit; }
+  .btn-ghost { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; font-family: inherit; padding: 4px 6px; }
+  .iconbtn { border: 1px solid var(--border); background: var(--surface); color: var(--muted); width: 40px; height: 40px; border-radius: 10px; cursor: pointer; font-size: 17px; }
+
+  .field { margin-bottom: 12px; }
+  .field label { display: block; font-size: 13px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+  .field input, .field select, .field textarea { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 16px; font-family: inherit; background: var(--surface); color: var(--text); }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  select.inline { padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-family: inherit; font-size: 14px; }
+
+  .top-nav { display: flex; gap: 2px; margin: 4px 0 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; border-bottom: 1px solid var(--border); }
+  .nav-tab { border: none; background: none; color: var(--muted); font-size: 15px; font-weight: 700; padding: 9px 11px; cursor: pointer; border-bottom: 2px solid transparent; white-space: nowrap; font-family: inherit; margin-bottom: -1px; }
+  .nav-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  .section-title { font-size: 13px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; color: var(--faint); margin: 20px 0 8px; }
+  .section-title:first-child { margin-top: 2px; }
+  .empty { color: var(--faint); font-size: 15px; padding: 6px 0; }
+
+  /* Lines and bars */
+  .line { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--border); }
+  .line:last-child { border-bottom: none; }
+  .line.total { font-weight: 700; }
+  .bar-row { display: grid; grid-template-columns: minmax(110px, 38%) 1fr 74px; gap: 10px; align-items: center; padding: 4px 0; font-size: 14.5px; }
+  .bar-row .num { text-align: right; }
+  .bar-row .bl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bar-track { height: 12px; background: var(--bar-2); border-radius: 6px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--bar); border-radius: 6px; }
+  .bar-fill.attn { background: var(--attention); opacity: .75; }
+  .cols { display: flex; align-items: flex-end; gap: 10px; height: 150px; padding-top: 18px; }
+  .col { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+  .col .cv { font-size: 12px; color: var(--muted); margin-bottom: 3px; white-space: nowrap; }
+  .col .cb { width: 100%; max-width: 46px; background: var(--bar); border-radius: 6px 6px 0 0; }
+  .col .cl { font-size: 12.5px; color: var(--muted); margin-top: 5px; }
+
+  .pill { font-size: 12.5px; padding: 2px 10px; border-radius: 999px; white-space: nowrap; border: none; font-family: inherit; }
+  .pill.biz { background: var(--accent-soft); color: var(--accent); }
+  .pill.pers { background: var(--attention-soft); color: var(--attention); }
+  .pill.plain { background: var(--surface-2); color: var(--muted); }
+  button.pill { cursor: pointer; }
+
+  .txn { display: flex; gap: 10px; align-items: flex-start; padding: 9px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .txn:last-child { border-bottom: none; }
+  .txn .td { color: var(--faint); font-size: 13px; width: 46px; flex: 0 0 auto; padding-top: 2px; }
+  .txn .tm { font-size: 15.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .txn .tc { font-size: 12.5px; color: var(--muted); }
+  .txn .ta { font-variant-numeric: tabular-nums; font-size: 15.5px; white-space: nowrap; }
+  .txn .ta.in { color: var(--accent); }
+
+  .move { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .move:last-child { border-bottom: none; }
+  .move .to { font-weight: 700; }
+  .move .why { font-size: 13px; color: var(--muted); }
+  .move .amt { font-size: 19px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .filters input { flex: 1; min-width: 140px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); color: var(--text); font-family: inherit; font-size: 15px; }
+
+  .footer-links { text-align: center; margin-top: 26px; }
+  .footer-links a { color: var(--faint); font-size: 13px; cursor: pointer; text-decoration: none; margin: 0 8px; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(20,30,30,0.45); display: flex; align-items: center; justify-content: center; z-index: 80; padding: 16px; }
+  .modal { background: var(--surface); border-radius: 16px; padding: 20px; max-width: 540px; width: 100%; max-height: 88vh; overflow-y: auto; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  #toastRoot { position: fixed; left: 50%; transform: translateX(-50%); bottom: 28px; z-index: 95; max-width: 92vw; }
+  .toast { background: var(--text); color: var(--bg); padding: 10px 16px; border-radius: 10px; font-size: 14px; box-shadow: 0 4px 14px rgba(20,30,30,0.3); }
+  .drop { border: 2px dashed var(--border); border-radius: var(--radius); padding: 22px; text-align: center; color: var(--muted); cursor: pointer; }
+  .drop:hover, .drop.over { border-color: var(--accent); color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="wrap" id="app"></div>
+<div id="modalRoot"></div>
+<div id="toastRoot"></div>
+<input type="file" id="fileInput" accept=".pdf,.csv,application/pdf,text/csv" multiple hidden>
+<input type="file" id="backupInput" accept=".json,application/json" hidden>
+
+<script>
+"use strict";
+
+/* ===========================================================================
+   1. APP CONFIG
+   =========================================================================== */
+const APP = {
+  name: "Accounting",
+  storageKeys: { mine: "accounting-v1", family: "accounting-family-v1" },
+  deviceKey: "accounting-device-v1",
+  driveFileName: "accounting-state.json",
+  tokenSessionKey: "accounting-google-token",
+  siblingStorageKeys: ["adulting-state-v1", "remembering-v1"],
+  pdfjsBase: "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/",
+};
+
+/* Categories. group decides how a dollar is counted:
+     business  - a business cost
+     household - personal or household spending
+     either    - could be either (meals, gas, travel): counted as business when
+                 it happens in a business account, household anywhere else.
+                 One tap on the transaction flips it.
+     debt, fees, income, transfer - their own buckets */
+const CATEGORIES = [
+  ["Business equipment", "business"],
+  ["Business software & services", "business"],
+  ["Business insurance", "business"],
+  ["Crew payroll", "business"],
+  ["Restaurants, coffee & delivery", "either"],
+  ["Gas & car care", "either"],
+  ["Travel, hotels & rides", "either"],
+  ["Buy now, pay later", "debt"],
+  ["Car payment", "debt"],
+  ["Credit card payments", "debt"],
+  ["Overdraft & bank fees", "fees"],
+  ["Utilities & phone", "household"],
+  ["Insurance (auto & health)", "household"],
+  ["Groceries & household stores", "household"],
+  ["Amazon", "household"],
+  ["Beauty, skin & supplements", "household"],
+  ["Health & medical", "household"],
+  ["Fitness", "household"],
+  ["Streaming & subscriptions", "household"],
+  ["Entertainment & nightlife", "household"],
+  ["Vape & smoke shops", "household"],
+  ["Education", "household"],
+  ["Donations", "household"],
+  ["Shopping (other)", "household"],
+  ["Cash & Zelle out", "transfer"],
+  ["Transfers out", "transfer"],
+  ["Client payments", "income"],
+  ["Transfers in", "transfer"],
+  ["Refunds & returns", "income"],
+  ["Other money in", "income"],
+  ["Uncategorized", "household"],
+];
+const CAT_GROUP = Object.fromEntries(CATEGORIES);
+
+/* Matching rules, checked in order against the transaction text. The user's
+   own merchant rules (Transactions -> tap -> "always") win over these. */
+const RULES = [
+  ["Overdraft & bank fees", /Overdraft|Service Charge|ATM Transaction Fee|Intl Purch/i],
+  ["Buy now, pay later", /Klarna|Affirm|Sp ?\+ ?aff|Zip\*|Syf-Payltr|Payin4|Afterpay|Sezzle/i],
+  ["Car payment", /Bridgecrest/i],
+  ["Credit card payments", /Opensky|Synchrony|Capital One|Discover|Chase Card|Amex|Card Services/i],
+  ["Business equipment", /B&H Photo|Hollyland|Best Buy|Sweetwater|Adorama|Guitar Center|Full Compass/i],
+  ["Business insurance", /Next Insurance/i],
+  ["Business software & services", /Adobe|Claude|Anthropic|Qbooks|Intuit|Canva|Dropbox|Opus|Splice|Linktr|Shopify|Digitalocean|Google \*Cloud|Fiverr|Venice|Genibot|thebestpdf|Fadr|Microsoft|G1Ai|Ajm Business|Copyright|Gusto|Cloudflare|Github|Squarespace|Godaddy/i],
+  ["Crew payroll", /Payroll(?! Asf)|Paychex|ADP /i],
+  ["Utilities & phone", /Amigo Energy|Atmos|City Of Grapevine|Tmobile|T-Mobile|Ring Multi|Verizon|AT&T|Spectrum|Txu|Reliant/i],
+  ["Insurance (auto & health)", /Root Insurance|Aspenauto|Alpine Rio|Nationwide|Wellpoint|Welpnt|Bcbs|Geico|Progressive|State Farm/i],
+  ["Health & medical", /Betterhelp|Regain|Lifestance|Med\*|Advanced Imaging|Therapy|Rejoicemd|Walgreens|Cvs|Pharmacy/i],
+  ["Beauty, skin & supplements", /Waxing|Skin Laundry|Nail|Hair Revival|Nuovo|Ulta|Morphe|Camel Glow|Bodyhealth|Ag1|Think Dirty|Filaga|Honeys Scented|Sephora/i],
+  ["Fitness", /Clubpilate|La Fitness|Sidewalker|Planet Fitness|Gym/i],
+  ["Streaming & subscriptions", /Netflix|Hulu|Spotify|Paramount|Peacock|Amc\+|Youtube|Apple\.?Com|Google \*(Youtub|Peacoc|Micros)|Audible|Kindle|Prime Video|Patreon|Second Life|Google ?\*?One|Appblock|Wikimedia|Kera|Goodbundle|Sams Club Renewal|Beenverified|Publicrecords|Dashpass|Amazon Digit|Superprof|Truple|Google \*Google|Rocket Money|Disney|Max\.com/i],
+  ["Vape & smoke shops", /Smo |Vap|Pmusa|Coastal Hemp/i],
+  ["Groceries & household stores", /Central Market|Whole ?f|Wholefds|Trader Joe|Tom Thumb|Kroger|Aldi|Heb |Grapevines? Mark|Farmers Market|Target|Walmart|Wal-Mart|Wm Supercenter|Sams Club|Costco|Container ?store|Home Depot|Lowe's|Amazon Groc|Petco|Petsmart/i],
+  ["Amazon", /Amazon|Amzn/i],
+  ["Gas & car care", /\bQt \d|Shell|Texaco(?! Food)|Chevron|Murphy|Quick Fill|Vioc|Wash ?master|Wash Masters|Autozone|Racetrac|Exxon|Fuel Town|Miller 24|Buc-ee|Valero|7-Eleven Ft|Parking/i],
+  ["Travel, hotels & rides", /Mta\*|Nyc Ferry|Path Tapp|Uber(?!.*Eats)|Ubr\*|Lyft|Hotel|Hyatt|Marriott|Springhill|Fairfield|Hilton|Airbnb|Airline|American Air|Southwest|Delta Air|United Air|Hudson B1/i],
+  ["Donations", /Actblue|Winred|Texas Coalition/i],
+  ["Education", /Dallas College|Tuition/i],
+  ["Cash & Zelle out", /Zel(le)? To|Card Free ATM|Atm Withdrawal|Cash App(?!\*La)/i],
+  ["Transfers out", /Online Transfer To/i],
+  ["Entertainment & nightlife", /Teatro|Alamo|Comedy|Prekindle|Trifecta|Grapefest|Stage West|Dfw Surf|Winery|Wine Fusion|Beer|\bBar\b|Pub\b|Clover Club|Social Oak|Reservoir|Pour Choices|iheartraves|Museum|Ticket/i],
+];
+const FOOD_RX = /Tst\*|Sq \*|Spo\*|Doordash|DD \*|Uber \* ?Eats|Eats|Chiloso|Taco|Caribou|Dutch Bros|Starbucks|Coffee|Whataburger|Wendy|Popeyes|Chipotle|Deli|Andy's|Sonic|Jimmy John|In-N-Out|Jack In|Little Caesar|Luby|La Chula|Eatzi|Feng Cha|Flower Child|Kelly|Pasta|Quartino|Aladdin|Firebox|Casita|Dumpling|Grace Grapevine|Sugar Shack|Noricha|Halal|Bagel|Bakery|Texaco Food|Quick ?Way|7-Eleven|Pizza|Burger|Grill|Cafe|Kitchen|Diner|Sushi|Thai|Bbq|Dunkin|Chick-Fil|Mcdonald|Subway|Panera|Restaurant/i;
+
+/* ===========================================================================
+   2. STATE
+   Two workspaces, each its own state. `items` is the single data array:
+     txn       { account, date YYYY-MM-DD, amount (+in / -out), desc, merchant,
+                 category, use: "business"|"personal"|null, stmt, catSet? }
+     statement { account, start, end, summary, count, source }
+     account   { last4, label, type: business|payroll|joint|personal|tax|other }
+     plan      { provider, what, payment, every: biweekly|monthly|weekly,
+                 left, next YYYY-MM-DD, account, status }
+     payday    { date, amount, client, crew, result }
+     rule      { merchant, category, use }
+   Every item: id, kind, createdAt, updatedAt. Deletes leave a tombstone in
+   `deleted` so a shared Family workspace can merge both partners' edits.
+   =========================================================================== */
+function defaultState() {
+  return {
+    items: [],
+    deleted: [],
+    updatedAt: Date.now(),
+    settings: {
+      owners: [{ name: "Owner 1", share: 50, jointPct: 50, salary: 0 }, { name: "Owner 2", share: 50, jointPct: 50, salary: 0 }],
+      taxPct: 25,           // placeholder: set the real number with your accountant
+      operatingPct: 10,
+      sCorp: true,
+    },
+  };
+}
+function defaultDevice() {
+  return {
+    theme: "light",
+    workspace: "mine",          // mine | family
+    googleClientId: "",
+    familyWorkerUrl: "",
+    familyId: "",
+    familyName: "",
+    familyVersion: 0,
+    email: "",
+  };
+}
+
+function loadJSON(key) { try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null; } catch (e) { return null; } }
+function normalizeState(parsed) {
+  const d = defaultState();
+  if (!parsed || typeof parsed !== "object") return d;
+  const s = Object.assign(d, parsed);
+  s.settings = Object.assign(defaultState().settings, parsed.settings || {});
+  if (!Array.isArray(s.settings.owners) || !s.settings.owners.length) s.settings.owners = defaultState().settings.owners;
+  s.items = Array.isArray(parsed.items) ? parsed.items : [];
+  s.deleted = Array.isArray(parsed.deleted) ? parsed.deleted : [];
+  if (!s.updatedAt) s.updatedAt = Date.now();
+  return s;
+}
+function loadDevice() {
+  const dev = Object.assign(defaultDevice(), loadJSON(APP.deviceKey) || {});
+  for (const key of APP.siblingStorageKeys) {
+    const s = ((loadJSON(key) || {}).settings) || {};
+    if (!dev.googleClientId && s.googleClientId) dev.googleClientId = s.googleClientId;
+  }
+  return dev;
+}
+function saveDevice() { localStorage.setItem(APP.deviceKey, JSON.stringify(DEVICE)); }
+function stateKey() { return APP.storageKeys[DEVICE.workspace] || APP.storageKeys.mine; }
+function saveState() { localStorage.setItem(stateKey(), JSON.stringify(STATE)); }
+
+let DEVICE = loadDevice();
+let STATE = normalizeState(loadJSON(stateKey()));
+let currentTab = "overview";
+let view = { month: null, account: "all", category: "all", q: "", showAll: false };
+let syncTimer = null;
+
+function persist() {
+  STATE.updatedAt = Date.now();
+  saveState();
+  render();
+  scheduleSync();
+}
+function scheduleSync() {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => { syncNow({ quiet: true }); }, 1500);
+}
+
+/* ===========================================================================
+   3. HELPERS
+   =========================================================================== */
+function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-3); }
+function todayISO() { const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); }
+function escapeHtml(s) {
+  return String(s == null ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+function money(n, cents) {
+  const v = Number(n) || 0;
+  return (v < 0 ? "-" : "") + "$" + Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: cents ? 2 : 0, maximumFractionDigits: cents ? 2 : 0 });
+}
+function round2(n) { return Math.round((Number(n) || 0) * 100) / 100; }
+function toast(msg) {
+  const root = document.getElementById("toastRoot");
+  root.innerHTML = '<div class="toast">' + escapeHtml(msg) + "</div>";
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { root.innerHTML = ""; }, 3600);
+}
+function openModal(html) {
+  document.getElementById("modalRoot").innerHTML =
+    '<div class="modal-backdrop" data-action="close-modal-backdrop"><div class="modal">' + html + "</div></div>";
+}
+function closeModal() { document.getElementById("modalRoot").innerHTML = ""; }
+function items(kind) { return STATE.items.filter((i) => i.kind === kind); }
+function newItem(kind, fields) { const t = Date.now(); return Object.assign({ id: uid(), kind, createdAt: t, updatedAt: t }, fields); }
+function touch(it) { it.updatedAt = Date.now(); }
+function removeItem(id) {
+  STATE.items = STATE.items.filter((i) => i.id !== id);
+  STATE.deleted.push({ id, at: Date.now() });
+  if (STATE.deleted.length > 5000) STATE.deleted = STATE.deleted.slice(-5000);
+}
+function monthKey(iso) { return String(iso || "").slice(0, 7); }
+function monthLabel(mk, short) {
+  if (!mk) return "";
+  const [y, m] = mk.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-US", short ? { month: "short" } : { month: "long", year: "numeric" });
+}
+function fmtDay(iso) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+function applyTheme() { document.documentElement.setAttribute("data-theme", DEVICE.theme || "light"); }
+
+/* ===========================================================================
+   4. ACCOUNTS + CATEGORIZING
+   =========================================================================== */
+const ACCOUNT_TYPES = { business: "Business operating", payroll: "Payroll", tax: "Tax savings", joint: "Joint household", personal: "Personal", other: "Other" };
+function accountFor(last4) { return items("account").find((a) => a.last4 === last4) || null; }
+function accountLabel(last4) { const a = accountFor(last4); return a ? a.label : "Account " + last4; }
+function accountType(last4) { const a = accountFor(last4); return a ? a.type : "other"; }
+function isBusinessAccount(last4) { const t = accountType(last4); return t === "business" || t === "payroll" || t === "tax"; }
+
+function merchantOf(desc) {
+  let d = String(desc || "");
+  d = d.replace(/^(\d{4} )?(Recurring )?(Debit Card Purchase|Debit Card Credit|Recurring Debit Card|POS Purchase|Debit Card)\s*/i, "");
+  d = d.replace(/POS\d+.*$/i, "").replace(/\b(PNC\w+|\d{6,}\w*)\b/g, "");
+  if (/^Affirm/i.test(d)) return "Affirm";
+  if (/^Klarna/i.test(d)) return "Klarna";
+  if (/^Sp ?\+ ?aff/i.test(d)) return "Shop Pay Installments";
+  if (/^(Amazon|Amzn|Kindle|Audible)/i.test(d)) return "Amazon";
+  if (/Overdraft/i.test(d)) return "Overdraft fee";
+  if (/^Bh\*/i.test(d)) return "BetterHelp";
+  if (/Claude|Anthropic/i.test(d)) return "Claude";
+  if (/^Mta/i.test(d)) return "NYC subway";
+  d = d.replace(/^(Tst\* ?|Sq \*|Py \*|Spo\*|DD \*|Sp )\s*/i, "");
+  d = d.replace(/\s+Mountain Vie(w)?\b.*$/i, "").replace(/\s+\d{3}-\d*\b.*$/, "").replace(/\s+#\s?\d+.*$/, "");
+  d = d.replace(/(\S)\s+\d{3,}\b.*$/, "$1").replace(/\s+(Tx|Ca|NY|Wa|Oh|Nv|Fl|Ma|NJ|De|Va|Il|PA)$/i, "");
+  return d.replace(/\s+/g, " ").trim().slice(0, 32) || "Unknown";
+}
+function cardOf(desc) { const m = /^(\d{4}) /.exec(String(desc || "")); return m ? m[1] : ""; }
+
+function autoCategory(t) {
+  const text = (t.desc || "") + " " + (t.extra || "");
+  if (t.amount > 0) {
+    if (/Online Transfer From|Transfer From|Zelle From/i.test(text)) return "Transfers in";
+    if (/Refund|Return|Payback|Debit Card Credit/i.test(text)) return "Refunds & returns";
+    if (/Deposit|ACH Credit|Bill_pay|Trade Pay|Stripe|Square|Paypal Transfer/i.test(text)) return "Client payments";
+    return "Other money in";
+  }
+  for (const [cat, rx] of RULES) if (rx.test(text)) return cat;
+  if (FOOD_RX.test(t.desc || "")) return "Restaurants, coffee & delivery";
+  return "Uncategorized";
+}
+function ruleFor(merchant) {
+  const key = String(merchant || "").toLowerCase();
+  return items("rule").find((r) => r.merchant === key) || null;
+}
+function categorize(t) {
+  const r = ruleFor(t.merchant);
+  if (t.catSet) return;                       // set by hand on this one transaction
+  if (r && t.amount < 0) { t.category = r.category; if (r.use) t.use = r.use; return; }
+  t.category = autoCategory(t);
+}
+/* How a dollar counts: "business", "personal", or null (money in / transfers / debt / fees). */
+function useOf(t) {
+  if (t.use) return t.use;
+  const g = CAT_GROUP[t.category] || "household";
+  if (t.amount >= 0) return null;
+  if (g === "business") return "business";
+  if (g === "household") return "personal";
+  if (g === "either") return isBusinessAccount(t.account) ? "business" : "personal";
+  if (g === "debt") return isBusinessAccount(t.account) ? "personal" : null;   // installments in a business account are household spending
+  return null;
+}
+
+/* ===========================================================================
+   5. STATEMENT IMPORT  (PNC PDF statements + generic bank CSV)
+   =========================================================================== */
+const PNC_SECTIONS = ["ATM Deposits and Additions", "ACH Additions", "Fee Refunds", "Other Additions", "Lending Additions", "Deposits",
+  "Debit Card Purchases", "POS Purchases", "ATM/Misc. Debit Card Transactions", "ATM/Misc. Debit Card", "ACH Deductions", "Service Charges and Fees",
+  "Other Deductions", "Checks and Substitute Checks", "Checks", "Online and Electronic Banking Deductions",
+  "Daily Balance", "Detail of Services Used", "Overdraft and Returned"];
+const PNC_CREDIT = new Set(["ATM Deposits and Additions", "ACH Additions", "Fee Refunds", "Other Additions", "Lending Additions", "Deposits"]);
+const PNC_SKIP = new Set(["Daily Balance", "Detail of Services Used", "Overdraft and Returned"]);
+const NOISE_RX = /(continued on next page|Business Checking|For 24-hour|pnc\.com|Primary Account|Page \d|^Date\s+Transaction|posted\s+Amount|ADV MEDIA|^Date\s|Reference$)/i;
+
+function moneyNum(s) { return parseFloat(String(s).replace(/[$,\s]/g, "")) || 0; }
+
+/* lines: array of text lines from a PNC statement. Returns null if it isn't one. */
+function parsePncStatement(lines) {
+  const all = lines.join("\n");
+  const per = /For the Period (\d\d)\/(\d\d)\/(\d{4}) to (\d\d)\/(\d\d)\/(\d{4})/.exec(all);
+  const acct = /Account Number:\s*[X\-]*(\d{4})/i.exec(all) || /Account number:\s*[X\-]*(\d{4})/i.exec(all);
+  if (!per || !acct) return null;
+  const start = per[3] + "-" + per[1] + "-" + per[2];
+  const end = per[6] + "-" + per[4] + "-" + per[5];
+  const endYear = Number(per[6]), endMonth = Number(per[4]);
+  let summary = null;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*Beginning\s+Deposits and/i.test(lines[i]) || /Beginning\s{2,}.*Deposits and/i.test(lines[i])) {
+      for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+        const nums = lines[j].match(/-?[\d,]*\.\d\d-?/g);
+        if (nums && nums.length >= 4) {
+          const v = nums.slice(0, 4).map((x) => (x.endsWith("-") ? -1 : 1) * moneyNum(x.replace(/-$/, "")));
+          summary = { beginning: v[0], deposits: v[1], withdrawals: v[2], ending: v[3] };
+          break;
+        }
+      }
+      break;
+    }
+  }
+  const txns = [];
+  let started = false, sec = null, cur = null;
+  for (const raw of lines) {
+    const s = raw.trim();
+    if (!started) { if (/^Activity Detail/i.test(s)) started = true; continue; }
+    const head = s.replace(/\s*-?\s*continued.*$/i, "").trim();
+    const hit = PNC_SECTIONS.find((x) => head === x);
+    if (hit) { sec = hit === "ATM/Misc. Debit Card" ? "ATM/Misc. Debit Card Transactions" : hit; cur = null; continue; }
+    if (!sec || PNC_SKIP.has(sec)) continue;
+    const m = /^(\d\d)\/(\d\d)\s+([\d,]*\.\d\d)\s+(.*)$/.exec(s);
+    if (m) {
+      const mo = Number(m[1]);
+      const yr = mo > endMonth ? endYear - 1 : endYear;
+      let desc = m[4].replace(/\s+\S*\d{8,}\S*\s*$/, "").replace(/\s+PNC[A-Za-z0-9]{6,}\s*$/, "").replace(/\s+/g, " ").trim();
+      const amt = moneyNum(m[3]);
+      cur = { date: yr + "-" + m[1] + "-" + m[2], amount: PNC_CREDIT.has(sec) ? amt : -amt, desc, extra: "", section: sec };
+      txns.push(cur);
+      continue;
+    }
+    if (cur && s && !NOISE_RX.test(s) && cur.extra.length < 60) cur.extra = (cur.extra + " " + s.replace(/\s+/g, " ")).trim();
+  }
+  return { bank: "PNC", last4: acct[1], start, end, summary, txns, businessHint: /Business Checking/i.test(all) };
+}
+
+/* Generic CSV: needs a date column, a description column, and either an
+   amount column or separate withdrawal/deposit (debit/credit) columns. */
+function splitCsvLine(line) {
+  const out = []; let cur = "", q = false;
+  for (let i = 0; i < line.length; i++) {
+    const c = line[i];
+    if (q) { if (c === '"' && line[i + 1] === '"') { cur += '"'; i++; } else if (c === '"') q = false; else cur += c; }
+    else if (c === '"') q = true; else if (c === ",") { out.push(cur); cur = ""; } else cur += c;
+  }
+  out.push(cur); return out.map((x) => x.trim());
+}
+function csvDate(s) {
+  s = String(s || "").trim();
+  let m = /^(\d{4})-(\d\d)-(\d\d)/.exec(s); if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})/.exec(s);
+  if (m) { const y = m[3].length === 2 ? "20" + m[3] : m[3]; return y + "-" + m[1].padStart(2, "0") + "-" + m[2].padStart(2, "0"); }
+  return null;
+}
+function parseCsvStatement(text) {
+  const lines = String(text).split(/\r?\n/).filter((l) => l.trim());
+  let hi = lines.findIndex((l) => /date/i.test(l) && /(desc|memo|payee|transaction|details)/i.test(l));
+  if (hi < 0) return null;
+  const h = splitCsvLine(lines[hi]).map((x) => x.toLowerCase());
+  const col = (rx) => h.findIndex((x) => rx.test(x));
+  const cDate = col(/date/), cDesc = col(/desc|memo|payee|details|transaction/);
+  const cAmt = col(/^amount$|^amount\b/), cOut = col(/withdraw|debit|payment/), cIn = col(/deposit|credit/);
+  if (cDate < 0 || cDesc < 0 || (cAmt < 0 && cOut < 0 && cIn < 0)) return null;
+  const txns = [];
+  for (const line of lines.slice(hi + 1)) {
+    const c = splitCsvLine(line);
+    const date = csvDate(c[cDate]); if (!date) continue;
+    let amount;
+    if (cAmt >= 0 && c[cAmt] !== "") { const raw = c[cAmt].replace(/[()]/g, ""); amount = moneyNum(raw) * (/^\(|^-/.test(c[cAmt].trim()) ? -1 : 1); }
+    else amount = moneyNum(c[cIn] || 0) - Math.abs(moneyNum(c[cOut] || 0));
+    if (!amount) continue;
+    txns.push({ date, amount: round2(amount), desc: c[cDesc].replace(/\s+/g, " "), extra: "", section: "CSV" });
+  }
+  if (!txns.length) return null;
+  const dates = txns.map((t) => t.date).sort();
+  return { bank: "CSV", last4: "", start: dates[0], end: dates[dates.length - 1], summary: null, txns, businessHint: false };
+}
+
+/* Check a parsed statement against the bank's own totals. */
+function reconcile(parsed) {
+  if (!parsed.summary) return null;
+  const inn = round2(parsed.txns.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0));
+  const out = round2(-parsed.txns.filter((t) => t.amount < 0).reduce((s, t) => s + t.amount, 0));
+  const dIn = round2(inn - parsed.summary.deposits), dOut = round2(out - parsed.summary.withdrawals);
+  return { inn, out, dIn, dOut, ok: Math.abs(dIn) < 0.01 && Math.abs(dOut) < 0.01 };
+}
+
+/* Save a parsed statement into STATE. Re-importing the same account + period
+   replaces it, keeping any category or business/personal choices made by hand. */
+function saveStatement(parsed, last4, source) {
+  const stmtKey = last4 + ":" + parsed.start + ":" + parsed.end;
+  const old = STATE.items.filter((i) => i.kind === "txn" && i.stmt === stmtKey);
+  const keep = new Map();
+  for (const o of old) keep.set(o.key, o);
+  for (const o of old) removeItem(o.id);
+  for (const s of items("statement").filter((s) => s.key === stmtKey)) removeItem(s.id);
+  const seen = {};
+  for (const t of parsed.txns) {
+    const base = [last4, t.date, t.amount.toFixed(2), t.desc].join("|");
+    seen[base] = (seen[base] || 0) + 1;
+    const key = base + "|" + seen[base];
+    const prev = keep.get(key);
+    const it = newItem("txn", { key, stmt: stmtKey, account: last4, date: t.date, amount: round2(t.amount), desc: t.desc, extra: t.extra || "", card: cardOf(t.desc), merchant: merchantOf(t.desc) });
+    if (prev) { it.id = prev.id; it.createdAt = prev.createdAt; if (prev.catSet) { it.catSet = true; it.category = prev.category; } if (prev.use) it.use = prev.use; }
+    categorize(it);
+    STATE.items.push(it);
+  }
+  const rec = reconcile(parsed);
+  STATE.items.push(newItem("statement", { key: stmtKey, account: last4, start: parsed.start, end: parsed.end, summary: parsed.summary, count: parsed.txns.length, source, reconciled: rec }));
+  STATE.deleted = STATE.deleted.filter((d) => !STATE.items.some((i) => i.id === d.id));
+  return rec;
+}
+
+/* --- PDF text, rebuilt into lines (pdf.js loads only when needed) --- */
+let _pdfjs = null;
+function loadPdfJs() {
+  if (_pdfjs) return Promise.resolve(_pdfjs);
+  return new Promise((resolve, reject) => {
+    if (window.pdfjsLib) { _pdfjs = window.pdfjsLib; return resolve(_pdfjs); }
+    const s = document.createElement("script");
+    s.src = APP.pdfjsBase + "pdf.min.js";
+    s.onload = () => { _pdfjs = window.pdfjsLib; _pdfjs.GlobalWorkerOptions.workerSrc = APP.pdfjsBase + "pdf.worker.min.js"; resolve(_pdfjs); };
+    s.onerror = () => reject(new Error("Couldn't load the PDF reader. Check your internet connection."));
+    document.head.appendChild(s);
+  });
+}
+async function pdfToLines(pdfjs, data) {
+  const doc = await pdfjs.getDocument({ data }).promise;
+  const out = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    const page = await doc.getPage(p);
+    const tc = await page.getTextContent();
+    const rows = [];
+    for (const it of tc.items) {
+      if (!it.str || !it.str.trim()) continue;
+      const y = it.transform[5], x = it.transform[4];
+      let r = rows.find((r) => Math.abs(r.y - y) < 2.5);
+      if (!r) { r = { y, items: [] }; rows.push(r); }
+      r.items.push({ x, w: it.width, s: it.str });
+    }
+    rows.sort((a, b) => b.y - a.y);
+    for (const r of rows) {
+      r.items.sort((a, b) => a.x - b.x);
+      let line = "", end = null;
+      for (const it of r.items) {
+        if (end !== null) { const gap = it.x - end; line += gap > 4 ? "   " : gap > 0.8 ? " " : ""; }
+        line += it.s; end = it.x + it.w;
+      }
+      out.push(line);
+    }
+    out.push("");
+  }
+  return out;
+}
+
+async function importFiles(fileList) {
+  const files = Array.from(fileList || []);
+  if (!files.length) return;
+  const results = [];
+  for (const f of files) {
+    try {
+      let parsed = null;
+      if (/\.pdf$/i.test(f.name) || f.type === "application/pdf") {
+        toast("Reading " + f.name + "…");
+        const pdfjs = await loadPdfJs();
+        const lines = await pdfToLines(pdfjs, new Uint8Array(await f.arrayBuffer()));
+        parsed = parsePncStatement(lines);
+        if (!parsed) { results.push({ name: f.name, error: "This PDF doesn't look like a PNC statement. Try the CSV export from online banking." }); continue; }
+      } else {
+        parsed = parseCsvStatement(await f.text());
+        if (!parsed) { results.push({ name: f.name, error: "Couldn't find date, description and amount columns in this CSV." }); continue; }
+      }
+      results.push({ name: f.name, parsed });
+    } catch (e) {
+      results.push({ name: f.name, error: e.message || String(e) });
+    }
+  }
+  confirmImport(results);
+}
+
+function confirmImport(results) {
+  const good = results.filter((r) => r.parsed);
+  const known = items("account");
+  let html = "<h3>Import statements</h3>";
+  results.forEach((r, i) => {
+    if (r.error) { html += '<div class="card attn-card"><b>' + escapeHtml(r.name) + '</b><div class="hint">' + escapeHtml(r.error) + "</div></div>"; return; }
+    const p = r.parsed, rec = reconcile(p);
+    const acct = p.last4 ? accountFor(p.last4) : null;
+    html += '<div class="card"><div class="row between"><b>' + escapeHtml(r.name) + '</b><span class="hint">' + p.txns.length + " transactions</span></div>";
+    html += '<div class="hint">' + fmtDay(p.start) + " to " + fmtDay(p.end) + (p.last4 ? ", account ending " + escapeHtml(p.last4) : "") + "</div>";
+    if (rec) html += '<div class="hint' + (rec.ok ? "" : " attn") + '">' + (rec.ok ? "Totals match the bank's summary." : "Totals differ from the bank's summary by " + money(rec.dIn, 1) + " in and " + money(rec.dOut, 1) + " out. Worth a look.") + "</div>";
+    if (!p.last4) {
+      html += '<div class="field" style="margin-top:10px"><label>Which account is this?</label><select data-imp-acct="' + i + '">' +
+        known.map((a) => '<option value="' + escapeHtml(a.last4) + '">' + escapeHtml(a.label) + " (" + escapeHtml(a.last4) + ")</option>").join("") +
+        '<option value="__new">New account…</option></select></div><div class="field"><label>Last 4 digits (for a new account)</label><input data-imp-new="' + i + '" inputmode="numeric" maxlength="4"></div>';
+    }
+    if (!acct) {
+      html += '<div class="grid2" style="margin-top:10px"><div class="field"><label>Name this account</label><input data-imp-label="' + i + '" value="' + escapeHtml(p.businessHint ? "Business checking" : "") + '"></div>' +
+        '<div class="field"><label>Type</label><select data-imp-type="' + i + '">' +
+        Object.entries(ACCOUNT_TYPES).map(([k, v]) => '<option value="' + k + '"' + ((p.businessHint ? "business" : "joint") === k ? " selected" : "") + ">" + escapeHtml(v) + "</option>").join("") +
+        "</select></div></div>";
+    }
+    html += "</div>";
+  });
+  html += '<div class="modal-actions"><button class="btn-sm" data-action="close-modal">Cancel</button>' + (good.length ? '<button class="btn-primary" id="impGo">Import</button>' : "") + "</div>";
+  openModal(html);
+  const go = document.getElementById("impGo");
+  if (!go) return;
+  go.onclick = () => {
+    const q = (sel) => document.querySelector(sel);
+    const done = [];
+    const plan = [];
+    for (let i = 0; i < results.length; i++) {
+      const r = results[i];
+      if (!r.parsed) continue;
+      let last4 = r.parsed.last4;
+      if (!last4) {
+        const pick = q('[data-imp-acct="' + i + '"]');
+        last4 = pick && pick.value !== "__new" ? pick.value : String((q('[data-imp-new="' + i + '"]') || {}).value || "").trim();
+        if (!/^\d{4}$/.test(last4)) { toast("Enter the last 4 digits for " + r.name); return; }
+      }
+      plan.push([r, i, last4]);
+    }
+    plan.forEach(([r, i, last4]) => {
+      if (!accountFor(last4)) {
+        const label = String((q('[data-imp-label="' + i + '"]') || {}).value || "").trim() || "Account " + last4;
+        const type = (q('[data-imp-type="' + i + '"]') || {}).value || "other";
+        STATE.items.push(newItem("account", { last4, label, type }));
+      }
+      const rec = saveStatement(r.parsed, last4, r.name);
+      done.push(monthLabel(monthKey(r.parsed.end)) + " (" + last4 + ")" + (rec && !rec.ok ? ", check totals" : ""));
+    });
+    closeModal();
+    view.month = null;
+    currentTab = "months";
+    persist();
+    toast("Imported " + done.join(", "));
+  };
+}
+
+/* ===========================================================================
+   6. NUMBERS  (pure functions: easy to test)
+   =========================================================================== */
+function txnsFor(filter) {
+  return items("txn").filter((t) => (!filter.month || monthKey(t.date) === filter.month) && (!filter.account || filter.account === "all" || t.account === filter.account));
+}
+function monthsWithData() { return [...new Set(items("txn").map((t) => monthKey(t.date)))].sort(); }
+function sum(arr, f) { return round2(arr.reduce((s, x) => s + (f ? f(x) : x), 0)); }
+
+function monthSummary(month, account) {
+  const t = txnsFor({ month, account });
+  const out = t.filter((x) => x.amount < 0);
+  const byCat = {};
+  for (const x of out) byCat[x.category] = round2((byCat[x.category] || 0) - x.amount);
+  return {
+    count: t.length,
+    moneyIn: sum(t.filter((x) => x.amount > 0), (x) => x.amount),
+    clientIn: sum(t.filter((x) => x.amount > 0 && x.category === "Client payments"), (x) => x.amount),
+    transfersIn: sum(t.filter((x) => x.amount > 0 && x.category === "Transfers in"), (x) => x.amount),
+    moneyOut: sum(out, (x) => -x.amount),
+    business: sum(out.filter((x) => useOf(x) === "business"), (x) => -x.amount),
+    personal: sum(out.filter((x) => useOf(x) === "personal"), (x) => -x.amount),
+    personalInBusiness: sum(out.filter((x) => isBusinessAccount(x.account) && useOf(x) === "personal"), (x) => -x.amount),
+    installments: sum(out.filter((x) => x.category === "Buy now, pay later"), (x) => -x.amount),
+    fees: sum(out.filter((x) => x.category === "Overdraft & bank fees"), (x) => -x.amount),
+    byCat: Object.entries(byCat).sort((a, b) => b[1] - a[1]),
+  };
+}
+
+/* Payday split. Pure: takes numbers + settings, returns the moves. */
+function computePayday(amount, crew, settings) {
+  const A = round2(amount), C = round2(crew);
+  const tax = round2(A * (Number(settings.taxPct) || 0) / 100);
+  const operating = round2(A * (Number(settings.operatingPct) || 0) / 100);
+  const pool = round2(Math.max(0, A - tax - C - operating));
+  const short = round2(Math.max(0, tax + C + operating - A));
+  const owners = (settings.owners || []).filter((o) => o && o.name);
+  const totalShare = owners.reduce((s, o) => s + (Number(o.share) || 0), 0) || 1;
+  let given = 0;
+  const people = owners.map((o, i) => {
+    let pay = i === owners.length - 1 ? round2(pool - given) : round2(pool * (Number(o.share) || 0) / totalShare);
+    given = round2(given + pay);
+    const salary = settings.sCorp ? Math.min(pay, round2(o.salary || 0)) : 0;
+    const joint = round2(pay * (Number(o.jointPct) || 0) / 100);
+    return { name: o.name, pay, salary, distribution: round2(pay - salary), joint, personal: round2(pay - joint) };
+  });
+  return { amount: A, tax, crew: C, operating, pool, short, people };
+}
+
+/* Installment plans: monthly cost and when each wraps up. */
+const PER_MONTH = { weekly: 52 / 12, biweekly: 26 / 12, monthly: 1 };
+const STEP_DAYS = { weekly: 7, biweekly: 14 };
+function planMonthly(p) { return p.status === "done" ? 0 : round2((Number(p.payment) || 0) * (PER_MONTH[p.every] || 1)); }
+function planRemaining(p) { return p.status === "done" ? 0 : round2((Number(p.payment) || 0) * (Number(p.left) || 0)); }
+function planEnds(p) {
+  const left = Number(p.left) || 0;
+  if (!p.next || left <= 0) return null;
+  const [y, m, d] = p.next.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  if (p.every === "monthly") dt.setMonth(dt.getMonth() + left - 1); else dt.setDate(dt.getDate() + (STEP_DAYS[p.every] || 14) * (left - 1));
+  return dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+}
+
+/* ===========================================================================
+   7. GOOGLE SIGN-IN  (same hard-won fixes as the sibling apps: always
+   prompt:"consent" on connect, 20s timeout, verify the Drive scope)
+   =========================================================================== */
+const Google = (function () {
+  const SCOPE = "openid email https://www.googleapis.com/auth/drive.appdata";
+  let tokenClient = null, gisLoaded = false, accessToken = null, tokenExpiresAt = 0;
+  function loadGisScript() {
+    if (gisLoaded) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      if (window.google && window.google.accounts && window.google.accounts.oauth2) { gisLoaded = true; return resolve(); }
+      const script = document.createElement("script");
+      script.src = "https://accounts.google.com/gsi/client"; script.async = true; script.defer = true;
+      script.onload = () => { gisLoaded = true; resolve(); };
+      script.onerror = () => reject(new Error("Could not load Google sign-in (check your internet connection)."));
+      document.head.appendChild(script);
+    });
+  }
+  function restore() {
+    try { const p = JSON.parse(sessionStorage.getItem(APP.tokenSessionKey) || "null"); if (p && p.expiresAt > Date.now()) { accessToken = p.accessToken; tokenExpiresAt = p.expiresAt; } } catch (e) { /* ignore */ }
+  }
+  function keep() { try { sessionStorage.setItem(APP.tokenSessionKey, JSON.stringify({ accessToken, expiresAt: tokenExpiresAt })); } catch (e) { /* ignore */ } }
+  function init(clientId) {
+    restore();
+    return loadGisScript().then(() => {
+      if (!clientId) throw new Error("No Google Client ID yet. Add it in Settings.");
+      tokenClient = window.google.accounts.oauth2.initTokenClient({ client_id: clientId, scope: SCOPE, callback: () => {} });
+    });
+  }
+  function isConnected() { return !!accessToken && Date.now() < tokenExpiresAt; }
+  function token() { return isConnected() ? accessToken : null; }
+  function take(resp) { accessToken = resp.access_token; tokenExpiresAt = Date.now() + (Number(resp.expires_in || 3600) - 60) * 1000; keep(); }
+  function connect() {
+    return new Promise((resolve, reject) => {
+      if (!tokenClient) return reject(new Error("Google isn't set up yet. Save your Client ID first."));
+      let settled = false;
+      const timer = setTimeout(() => { if (settled) return; settled = true; reject(new Error("Google's sign-in window didn't open or was closed. Usually a pop-up blocker: allow pop-ups for this site and try again.")); }, 20000);
+      tokenClient.callback = (resp) => {
+        if (settled) return; settled = true; clearTimeout(timer);
+        if (resp.error) return reject(new Error(resp.error));
+        const granted = (resp.scope || "").split(/\s+/);
+        if (!granted.includes("https://www.googleapis.com/auth/drive.appdata")) return reject(new Error("Google signed you in but didn't grant Drive access. Sign out, sign in again, and keep the Drive permission checked."));
+        take(resp); resolve();
+      };
+      tokenClient.requestAccessToken({ prompt: "consent" });
+    });
+  }
+  function ensureToken() {
+    if (isConnected()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      if (!tokenClient) return resolve(false);
+      tokenClient.callback = (resp) => { if (resp.error) return resolve(false); take(resp); resolve(true); };
+      try { tokenClient.requestAccessToken({ prompt: "" }); } catch (e) { resolve(false); }
+    });
+  }
+  function disconnect() {
+    if (accessToken && window.google) { try { window.google.accounts.oauth2.revoke(accessToken, () => {}); } catch (e) { /* ignore */ } }
+    accessToken = null; tokenExpiresAt = 0; sessionStorage.removeItem(APP.tokenSessionKey);
+  }
+  async function email() {
+    if (!isConnected()) return "";
+    const r = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", { headers: { Authorization: "Bearer " + accessToken } });
+    if (!r.ok) return "";
+    return ((await r.json()) || {}).email || "";
+  }
+  return { init, isConnected, connect, ensureToken, disconnect, token, email };
+})();
+
+/* ===========================================================================
+   8. SYNC
+   Mine   -> one JSON file in your private Google Drive app storage. Newest
+             updatedAt wins, with the SAFETY RAIL: an empty device never
+             overwrites a copy that has data.
+   Family -> the Accounting Family Worker. Both partners' edits are merged
+             item by item (newest edit wins, deletes respected).
+   =========================================================================== */
+const DriveSync = (function () {
+  const API = "https://www.googleapis.com/drive/v3", UP = "https://www.googleapis.com/upload/drive/v3";
+  let fileId = null;
+  const auth = () => { const t = Google.token(); if (!t) throw new Error("Not signed in to Google."); return { Authorization: "Bearer " + t }; };
+  async function find() {
+    if (fileId) return fileId;
+    const p = new URLSearchParams({ spaces: "appDataFolder", q: "name='" + APP.driveFileName + "'", fields: "files(id)", pageSize: "1" });
+    const r = await fetch(API + "/files?" + p, { headers: auth() });
+    if (!r.ok) throw new Error("Drive lookup failed: " + r.status);
+    const f = ((await r.json()).files || [])[0];
+    fileId = f ? f.id : null; return fileId;
+  }
+  async function pull() {
+    const id = await find(); if (!id) return null;
+    const r = await fetch(API + "/files/" + id + "?alt=media", { headers: auth() });
+    if (!r.ok) throw new Error("Drive read failed: " + r.status);
+    try { return await r.json(); } catch (e) { return null; }
+  }
+  async function push(state) {
+    const body = JSON.stringify(state), id = await find();
+    if (id) {
+      const r = await fetch(UP + "/files/" + id + "?uploadType=media", { method: "PATCH", headers: Object.assign({ "Content-Type": "application/json" }, auth()), body });
+      if (!r.ok) throw new Error("Drive save failed: " + r.status); return true;
+    }
+    const b = "b" + Date.now();
+    const meta = JSON.stringify({ name: APP.driveFileName, parents: ["appDataFolder"] });
+    const mp = "--" + b + "\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n" + meta + "\r\n--" + b + "\r\nContent-Type: application/json\r\n\r\n" + body + "\r\n--" + b + "--";
+    const r = await fetch(UP + "/files?uploadType=multipart", { method: "POST", headers: Object.assign({ "Content-Type": "multipart/related; boundary=" + b }, auth()), body: mp });
+    if (!r.ok) throw new Error("Drive create failed: " + r.status);
+    fileId = (await r.json()).id; return true;
+  }
+  function reset() { fileId = null; }
+  return { pull, push, reset };
+})();
+
+const Family = (function () {
+  function base() { return String(DEVICE.familyWorkerUrl || "").replace(/\/+$/, ""); }
+  async function call(method, path, body) {
+    if (!base()) throw new Error("Add the Family Worker URL in Settings first.");
+    const t = Google.token(); if (!t) throw new Error("Sign in with Google first.");
+    const r = await fetch(base() + path, { method, headers: { Authorization: "Bearer " + t, "Content-Type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+    let data = null; try { data = await r.json(); } catch (e) { /* empty */ }
+    if (!r.ok && r.status !== 409) throw new Error((data && data.error) || ("Family sync error " + r.status));
+    return { status: r.status, data };
+  }
+  return {
+    list: () => call("GET", "/families"),
+    create: (name) => call("POST", "/families", { name }),
+    invite: (id, email) => call("POST", "/families/" + encodeURIComponent(id) + "/members", { email }),
+    get: (id) => call("GET", "/families/" + encodeURIComponent(id) + "/state"),
+    put: (id, state, baseVersion) => call("PUT", "/families/" + encodeURIComponent(id) + "/state", { state, baseVersion }),
+  };
+})();
+
+/* Merge two copies of a workspace item by item. Newest edit wins; an item
+   deleted on either side stays deleted unless it was edited after the delete. */
+function mergeStates(a, b) {
+  a = normalizeState(a); b = normalizeState(b);
+  const tomb = new Map();
+  for (const d of [...a.deleted, ...b.deleted]) tomb.set(d.id, Math.max(tomb.get(d.id) || 0, d.at || 0));
+  const byId = new Map();
+  for (const it of [...a.items, ...b.items]) {
+    const prev = byId.get(it.id);
+    if (!prev || (it.updatedAt || 0) > (prev.updatedAt || 0)) byId.set(it.id, it);
+  }
+  const outItems = [...byId.values()].filter((it) => !(tomb.has(it.id) && tomb.get(it.id) >= (it.updatedAt || 0)));
+  const newer = (a.updatedAt || 0) >= (b.updatedAt || 0) ? a : b;
+  return normalizeState({
+    items: outItems,
+    deleted: [...tomb.entries()].map(([id, at]) => ({ id, at })).slice(-5000),
+    settings: newer.settings,
+    updatedAt: Math.max(a.updatedAt || 0, b.updatedAt || 0),
+  });
+}
+
+let _syncing = false;
+async function syncNow(opts) {
+  opts = opts || {};
+  if (_syncing || !Google.isConnected()) return;
+  _syncing = true;
+  try {
+    if (DEVICE.workspace === "family") await syncFamily();
+    else await syncMine();
+    if (!opts.quiet) toast("Synced");
+  } catch (e) {
+    console.warn("Sync failed", e);
+    if (!opts.quiet) toast(e.message || "Sync didn't finish.");
+  } finally { _syncing = false; }
+}
+async function syncMine() {
+  const remote = await DriveSync.pull();
+  if (remote && (remote.updatedAt || 0) > (STATE.updatedAt || 0)) {
+    STATE = normalizeState(remote); saveState(); render(); return;
+  }
+  /* SAFETY RAIL: never push an empty list over a remote copy that has data. */
+  if (!STATE.items.length && remote && Array.isArray(remote.items) && remote.items.length) {
+    STATE = normalizeState(remote); saveState(); render(); toast("Restored " + STATE.items.length + " items from Google Drive"); return;
+  }
+  await DriveSync.push(STATE);
+}
+async function syncFamily() {
+  if (!DEVICE.familyId) return;
+  const got = await Family.get(DEVICE.familyId);
+  const remote = got.data || {};
+  let merged = remote.state ? mergeStates(STATE, remote.state) : STATE;
+  /* SAFETY RAIL (family): an empty device takes the shared copy, never the other way round. */
+  if (!STATE.items.length && remote.state && remote.state.items && remote.state.items.length) merged = normalizeState(remote.state);
+  let res = await Family.put(DEVICE.familyId, merged, remote.version || 0);
+  if (res.status === 409) {
+    const again = (res.data && res.data.state) ? mergeStates(merged, res.data.state) : merged;
+    res = await Family.put(DEVICE.familyId, again, (res.data && res.data.version) || 0);
+    merged = again;
+  }
+  if (res.status === 409) throw new Error("Your partner is saving at the same moment. Try Sync again.");
+  STATE = merged; DEVICE.familyVersion = (res.data && res.data.version) || 0; saveDevice(); saveState(); render();
+}
+
+async function signIn() {
+  if (!DEVICE.googleClientId) { toast("Add your Google Client ID in Settings first."); openSettings(); return; }
+  try {
+    await Google.init(DEVICE.googleClientId);
+    await Google.connect();
+    DEVICE.email = await Google.email().catch(() => "") || DEVICE.email; saveDevice();
+    toast("Signed in" + (DEVICE.email ? " as " + DEVICE.email : ""));
+    await syncNow({ quiet: false });
+    render();
+  } catch (e) { toast(e.message || "Couldn't sign in."); }
+}
+function signOut() { Google.disconnect(); DriveSync.reset(); DEVICE.email = ""; saveDevice(); render(); toast("Signed out. Your data stays on this device."); }
+
+function switchWorkspace(ws) {
+  if (ws === DEVICE.workspace) return;
+  saveState();
+  DEVICE.workspace = ws; saveDevice();
+  STATE = normalizeState(loadJSON(stateKey()));
+  view = { month: null, account: "all", category: "all", q: "", showAll: false };
+  render();
+  if (ws === "family" && !DEVICE.familyId) { openFamilySetup(); return; }
+  syncNow({ quiet: true });
+}
+
+/* ===========================================================================
+   9. UI
+   =========================================================================== */
+const TABS = [["overview", "Overview"], ["payday", "Payday"], ["months", "Months"], ["installments", "Installments"], ["txns", "Transactions"]];
+
+function render() {
+  const app = document.getElementById("app");
+  const wsName = DEVICE.workspace === "family" ? (DEVICE.familyName || "Family") : "Mine";
+  let h = '<div class="hdr"><div class="hdr-title"><img class="hdr-mark" src="icon-192.png" alt=""><h1>Accounting</h1></div>' +
+    '<div class="row"><button class="ws" data-action="workspace" aria-label="Workspace"><b>' + escapeHtml(wsName) + '</b> ▾</button>' +
+    '<button class="iconbtn" data-action="settings" aria-label="Settings">⚙︎</button></div></div>';
+  h += '<nav class="top-nav">' + TABS.map(([k, v]) => '<button class="nav-tab' + (currentTab === k ? " active" : "") + '" data-action="tab" data-id="' + k + '">' + v + "</button>").join("") + "</nav>";
+  const fn = { overview: renderOverview, payday: renderPayday, months: renderMonths, installments: renderInstallments, txns: renderTxns }[currentTab] || renderOverview;
+  h += fn();
+  h += '<div class="footer-links"><a data-action="import">Import statements</a><a data-action="settings">Settings</a>' +
+    (Google.isConnected() ? '<a data-action="sync">Sync now</a>' : '<a data-action="signin">Sign in with Google</a>') + "</div>";
+  app.innerHTML = h;
+}
+
+function emptyImport() {
+  return '<div class="card"><div class="drop" data-action="import"><b>Import bank statements</b><br><span class="hint">PNC PDF statements or a CSV export from any bank. Drop files here or tap to choose.</span></div></div>';
+}
+
+function renderOverview() {
+  const months = monthsWithData();
+  let h = "";
+  if (!months.length) {
+    h += '<div class="card"><b>Start here</b><p class="muted" style="margin:6px 0 0">1. Import your statements so you can see where the money went.<br>2. Set up owners and percentages in Settings.<br>3. On each payday, use the Payday tab to split the money.</p></div>';
+    return h + emptyImport() + renderLastPayday();
+  }
+  const m = months[months.length - 1];
+  const s = monthSummary(m, "all");
+  h += '<div class="section-title">' + escapeHtml(monthLabel(m)) + " (latest imported month)</div>";
+  h += '<div class="tiles">' +
+    tile("Client payments", s.clientIn) + tile("Moved in from other accounts", s.transfersIn) +
+    tile("Business spending", s.business) + tile("Household spending", s.personal) +
+    tile("Personal spending in business accounts", s.personalInBusiness, s.personalInBusiness > 0) +
+    tile("Installment payments", s.installments, s.installments > 0) + "</div>";
+  if (s.personalInBusiness > 0) {
+    const t = txnsFor({ month: m }).filter((x) => x.amount < 0 && isBusinessAccount(x.account) && useOf(x) === "personal");
+    const byCat = {};
+    t.forEach((x) => { byCat[x.category] = round2((byCat[x.category] || 0) - x.amount); });
+    h += '<div class="card attn-card"><b>Household spending that went through the business</b><p class="muted" style="margin:4px 0 8px">These would come from the joint or personal accounts once everything is split. Tap a category in Transactions to change one.</p>' +
+      bars(Object.entries(byCat).sort((a, b) => b[1] - a[1]).slice(0, 6), true) + "</div>";
+  }
+  if (months.length > 1) {
+    h += '<div class="section-title">Month by month</div><div class="card">' +
+      '<div class="hint" style="margin-bottom:4px">Personal spending in business accounts</div>' +
+      columns(months.slice(-6).map((mk) => [monthLabel(mk, true), monthSummary(mk, "all").personalInBusiness])) + "</div>";
+  }
+  return h + renderLastPayday();
+}
+function tile(label, v, attn) { return '<div class="tile' + (attn ? " attn-tile" : "") + '"><div class="lbl">' + escapeHtml(label) + '</div><div class="big">' + money(v) + "</div></div>"; }
+function bars(pairs, attn) {
+  if (!pairs.length) return '<div class="empty">Nothing here.</div>';
+  const max = Math.max(...pairs.map((p) => p[1])) || 1;
+  return pairs.map(([k, v]) => '<div class="bar-row"><span class="bl">' + escapeHtml(k) + '</span><div class="bar-track"><div class="bar-fill' + (attn ? " attn" : "") + '" style="width:' + Math.max(1, (v / max) * 100).toFixed(1) + '%"></div></div><span class="num">' + money(v) + "</span></div>").join("");
+}
+function columns(pairs) {
+  const max = Math.max(...pairs.map((p) => p[1]), 1);
+  return '<div class="cols">' + pairs.map(([k, v]) => '<div class="col"><span class="cv">' + money(v) + '</span><div class="cb" style="height:' + Math.max(2, (v / max) * 100).toFixed(1) + '%"></div><span class="cl">' + escapeHtml(k) + "</span></div>").join("") + "</div>";
+}
+function renderLastPayday() {
+  const p = items("payday").sort((a, b) => (b.date || "").localeCompare(a.date || ""))[0];
+  if (!p) return "";
+  return '<div class="section-title">Last payday</div><div class="card"><div class="row between"><b>' + escapeHtml(fmtDay(p.date)) + (p.client ? " · " + escapeHtml(p.client) : "") + '</b><span class="num">' + money(p.amount, 1) + "</span></div>" +
+    (p.result.people || []).map((x) => '<div class="line"><span>' + escapeHtml(x.name) + '</span><span class="num">' + money(x.pay, 1) + "</span></div>").join("") + "</div>";
+}
+
+/* ---- Payday ---- */
+let payDraft = { amount: "", crew: "", client: "", date: "" };
+function renderPayday() {
+  const st = STATE.settings;
+  let h = '<div class="card"><h3>Split a client payment</h3>' +
+    '<div class="grid2"><div class="field"><label>Payment received</label><input id="pdAmount" inputmode="decimal" placeholder="0.00" value="' + escapeHtml(payDraft.amount) + '"></div>' +
+    '<div class="field"><label>Crew payroll for this job</label><input id="pdCrew" inputmode="decimal" placeholder="0.00" value="' + escapeHtml(payDraft.crew) + '"></div></div>' +
+    '<div class="grid2"><div class="field"><label>From (client or job)</label><input id="pdClient" value="' + escapeHtml(payDraft.client) + '"></div>' +
+    '<div class="field"><label>Date</label><input id="pdDate" type="date" value="' + escapeHtml(payDraft.date || todayISO()) + '"></div></div>' +
+    '<div class="hint">Tax savings ' + escapeHtml(st.taxPct) + "% · Operating " + escapeHtml(st.operatingPct) + "% · change these in Settings.</div></div>";
+  const A = moneyNum(payDraft.amount);
+  if (A > 0) {
+    const r = computePayday(A, moneyNum(payDraft.crew), st);
+    h += '<div class="card"><h3>Move the money</h3>' +
+      move("Tax savings", st.taxPct + "% set aside for taxes", r.tax) +
+      (r.crew ? move("Payroll account", "Crew pay for this job", r.crew) : "") +
+      move("Stays in business operating", st.operatingPct + "% for equipment, gas, meals", r.operating);
+    if (r.short > 0) h += '<p class="attn" style="margin:8px 0 0">This payment doesn\'t cover all of it. Owner pay is $0 this time, and ' + money(r.short, 1) + " more is needed to fill the buckets above.</p>";
+    r.people.forEach((p) => {
+      h += '<div class="section-title">' + escapeHtml(p.name) + " · " + money(p.pay, 1) + "</div>";
+      if (st.sCorp && p.salary > 0) h += '<div class="hint">' + money(p.salary, 1) + " runs through payroll as salary (taxes come out there). " + money(p.distribution, 1) + " is a distribution.</div>";
+      h += move("Joint household", "", p.joint) + move(p.name + "'s personal account", "", p.personal);
+    });
+    if (st.sCorp) h += '<p class="hint" style="margin-top:10px">As an S-Corp, owners who work in the business need a reasonable salary through payroll. Set each owner\'s salary per payday in Settings with your accountant.</p>';
+    h += '<div class="modal-actions"><button class="btn-primary" data-action="save-payday">Save this payday</button></div></div>';
+  }
+  const hist = items("payday").sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  if (hist.length) {
+    h += '<div class="section-title">Past paydays</div><div class="card">' + hist.slice(0, 20).map((p) =>
+      '<div class="line"><span>' + escapeHtml(fmtDay(p.date)) + (p.client ? ' <span class="faint">' + escapeHtml(p.client) + "</span>" : "") + '</span><span class="row"><span class="num">' + money(p.amount, 1) + '</span><button class="btn-ghost" data-action="open-payday" data-id="' + p.id + '">View</button></span></div>').join("") + "</div>";
+  }
+  return h;
+}
+function move(to, why, amt) { return '<div class="move"><div><div class="to">' + escapeHtml(to) + "</div>" + (why ? '<div class="why">' + escapeHtml(why) + "</div>" : "") + '</div><div class="amt">' + money(amt, 1) + "</div></div>"; }
+
+/* ---- Months ---- */
+function renderMonths() {
+  const months = monthsWithData();
+  if (!months.length) return emptyImport();
+  if (!view.month || !months.includes(view.month)) view.month = months[months.length - 1];
+  const accts = items("account");
+  let h = '<div class="filters"><select class="inline" data-change="month">' + months.slice().reverse().map((m) => '<option value="' + m + '"' + (m === view.month ? " selected" : "") + ">" + escapeHtml(monthLabel(m)) + "</option>").join("") + "</select>" +
+    '<select class="inline" data-change="account"><option value="all">All accounts</option>' + accts.map((a) => '<option value="' + escapeHtml(a.last4) + '"' + (view.account === a.last4 ? " selected" : "") + ">" + escapeHtml(a.label) + "</option>").join("") + "</select></div>";
+  const s = monthSummary(view.month, view.account);
+  h += '<div class="tiles">' + tile("Money in", s.moneyIn) + tile("Money out", s.moneyOut) + tile("Business", s.business) + tile("Household", s.personal) + "</div>";
+  h += '<div class="card"><div class="line"><span>Paid by clients</span><span class="num">' + money(s.clientIn, 1) + '</span></div><div class="line"><span>Moved in from other accounts</span><span class="num">' + money(s.transfersIn, 1) + "</span></div>" +
+    '<div class="line"><span>Installment payments</span><span class="num">' + money(s.installments, 1) + '</span></div><div class="line"><span>Overdraft and bank fees</span><span class="num' + (s.fees > 0 ? " attn" : "") + '">' + money(s.fees, 1) + "</span></div>" +
+    (s.personalInBusiness > 0 ? '<div class="line"><span class="attn">Household spending in business accounts</span><span class="num attn">' + money(s.personalInBusiness, 1) + "</span></div>" : "") + "</div>";
+  if (view.account === "all" && accts.length > 1) {
+    h += '<div class="section-title">By account</div><div class="card">' + accts.map((a) => {
+      const x = monthSummary(view.month, a.last4);
+      if (!x.count) return "";
+      return '<div class="line"><span>' + escapeHtml(a.label) + ' <span class="faint">' + escapeHtml(ACCOUNT_TYPES[a.type] || "") + '</span></span><span class="num">in ' + money(x.moneyIn) + " · out " + money(x.moneyOut) + "</span></div>";
+    }).join("") + "</div>";
+  }
+  h += '<div class="section-title">Where it went</div><div class="card">' + bars(s.byCat.slice(0, 14)) + '<div class="modal-actions"><button class="btn-sm" data-action="see-txns">See these transactions</button></div></div>';
+  const st = items("statement").filter((x) => monthKey(x.end) === view.month && (view.account === "all" || x.account === view.account));
+  if (st.length) h += '<div class="hint">' + st.map((x) => escapeHtml(accountLabel(x.account)) + ": " + (x.reconciled ? (x.reconciled.ok ? "matches the bank's totals" : "differs from the bank's totals") : "imported from CSV")).join(" · ") + "</div>";
+  return h;
+}
+
+/* ---- Installments ---- */
+function renderInstallments() {
+  const months = monthsWithData();
+  let h = "";
+  const plans = items("plan");
+  const active = plans.filter((p) => p.status !== "done");
+  const monthly = sum(active, planMonthly), remaining = sum(active, planRemaining);
+  h += '<div class="tiles">' + tile("Open plans", active.length).replace("$", "") + tile("About per month", monthly) + tile("Left to pay", remaining) + "</div>";
+  if (months.length) {
+    h += '<div class="card"><b>Installment payments by month</b><div class="hint">From your imported statements: Klarna, Affirm, Shop Pay Installments, Zip, PayPal Pay in 4.</div>' +
+      columns(months.slice(-8).map((m) => [monthLabel(m, true), monthSummary(m, "all").installments])) + "</div>";
+    const last = months[months.length - 1];
+    const byProv = {};
+    txnsFor({ month: last }).filter((t) => t.category === "Buy now, pay later").forEach((t) => { byProv[t.merchant] = round2((byProv[t.merchant] || 0) - t.amount); });
+    if (Object.keys(byProv).length) h += '<div class="card"><b>' + escapeHtml(monthLabel(last)) + " by provider</b>" + bars(Object.entries(byProv).sort((a, b) => b[1] - a[1])) + "</div>";
+  }
+  h += '<div class="row between"><div class="section-title" style="margin:14px 0 8px">Your plans</div><button class="btn-sm" data-action="add-plan">+ Add plan</button></div>';
+  if (!plans.length) h += '<div class="card"><p class="muted" style="margin:0">Add each open plan from the Klarna and Affirm apps: what it was for, the payment, how many are left. You\'ll see the monthly total and when each one wraps up. Also check each plan\'s payment method there, so it charges the right account.</p></div>';
+  const order = { "not started": 0, "in progress": 1, done: 2 };
+  plans.slice().sort((a, b) => (order[a.status] || 1) - (order[b.status] || 1) || (planEnds(a) || "").localeCompare(planEnds(b) || "")).forEach((p) => {
+    const ends = planEnds(p);
+    h += '<div class="card"><div class="row between"><div class="grow"><b>' + escapeHtml(p.provider) + (p.what ? " · " + escapeHtml(p.what) : "") + '</b><div class="hint">' +
+      (p.status === "done" ? "done" : money(p.payment, 1) + " " + escapeHtml(p.every) + " · " + escapeHtml(p.left) + " left" + (ends ? " · last one " + fmtDay(ends) : "")) +
+      (p.account ? " · paid from " + escapeHtml(accountLabel(p.account)) : "") + "</div></div>" +
+      '<div class="row"><button class="pill ' + (p.status === "done" ? "biz" : "plain") + '" data-action="plan-paid" data-id="' + p.id + '">' + (p.status === "done" ? "done" : "1 paid") + '</button><button class="btn-ghost" data-action="edit-plan" data-id="' + p.id + '">Edit</button></div></div>' +
+      (p.account && isBusinessAccount(p.account) && p.status !== "done" ? '<div class="hint attn" style="margin-top:4px">Charges a business account. Switch the payment method in the provider\'s app.</div>' : "") + "</div>";
+  });
+  return h;
+}
+
+/* ---- Transactions ---- */
+function renderTxns() {
+  const months = monthsWithData();
+  if (!months.length) return emptyImport();
+  if (!view.month || !months.includes(view.month)) view.month = months[months.length - 1];
+  const accts = items("account");
+  const cats = [...new Set(items("txn").map((t) => t.category))].sort();
+  let h = '<div class="filters"><select class="inline" data-change="month">' + months.slice().reverse().map((m) => '<option value="' + m + '"' + (m === view.month ? " selected" : "") + ">" + escapeHtml(monthLabel(m)) + "</option>").join("") + "</select>" +
+    '<select class="inline" data-change="account"><option value="all">All accounts</option>' + accts.map((a) => '<option value="' + escapeHtml(a.last4) + '"' + (view.account === a.last4 ? " selected" : "") + ">" + escapeHtml(a.label) + "</option>").join("") + "</select>" +
+    '<select class="inline" data-change="category"><option value="all">All categories</option><option value="__personal_in_business"' + (view.category === "__personal_in_business" ? " selected" : "") + ">Household in business accounts</option>" + cats.map((c) => '<option value="' + escapeHtml(c) + '"' + (view.category === c ? " selected" : "") + ">" + escapeHtml(c) + "</option>").join("") + "</select>" +
+    '<input data-change="q" placeholder="Search" value="' + escapeHtml(view.q) + '"></div>';
+  let list = txnsFor({ month: view.month, account: view.account });
+  if (view.category === "__personal_in_business") list = list.filter((t) => t.amount < 0 && isBusinessAccount(t.account) && useOf(t) === "personal");
+  else if (view.category !== "all") list = list.filter((t) => t.category === view.category);
+  if (view.q) { const q = view.q.toLowerCase(); list = list.filter((t) => (t.desc + " " + t.merchant).toLowerCase().includes(q)); }
+  list.sort((a, b) => b.date.localeCompare(a.date) || a.amount - b.amount);
+  const total = sum(list, (t) => t.amount);
+  h += '<div class="hint" style="margin-bottom:6px">' + list.length + " transactions · net " + money(total, 1) + "</div>";
+  const shown = view.showAll ? list : list.slice(0, 150);
+  h += '<div class="card">' + (shown.length ? shown.map(txnRow).join("") : '<div class="empty">Nothing matches.</div>') + "</div>";
+  if (shown.length < list.length) h += '<div class="row" style="justify-content:center"><button class="btn-sm" data-action="show-all">Show all ' + list.length + "</button></div>";
+  return h;
+}
+function txnRow(t) {
+  const u = useOf(t);
+  return '<div class="txn" data-action="edit-txn" data-id="' + t.id + '"><div class="td">' + escapeHtml(fmtDay(t.date)) + '</div><div class="grow"><div class="tm">' + escapeHtml(t.merchant) + '</div><div class="tc">' + escapeHtml(t.category) +
+    (u ? ' · <span class="pill ' + (u === "business" ? "biz" : "pers") + '">' + u + "</span>" : "") + (items("account").length > 1 ? " · " + escapeHtml(accountLabel(t.account)) : "") + '</div></div><div class="ta' + (t.amount > 0 ? " in" : "") + '">' + money(t.amount, 1) + "</div></div>";
+}
+
+/* ---- Modals ---- */
+function openTxn(id) {
+  const t = STATE.items.find((i) => i.id === id); if (!t) return;
+  const u = useOf(t);
+  openModal("<h3>" + escapeHtml(t.merchant) + '</h3><div class="hint">' + escapeHtml(fmtDay(t.date)) + " · " + escapeHtml(accountLabel(t.account)) + " · " + money(t.amount, 1) + '</div><p class="faint" style="font-size:13px">' + escapeHtml(t.desc) + (t.extra ? " " + escapeHtml(t.extra) : "") + "</p>" +
+    '<div class="field"><label>Category</label><select id="txCat">' + CATEGORIES.map(([c]) => '<option' + (c === t.category ? " selected" : "") + ">" + escapeHtml(c) + "</option>").join("") + "</select></div>" +
+    (t.amount < 0 ? '<div class="field"><label>Counts as</label><select id="txUse"><option value="">Automatic (' + escapeHtml(u || "neither") + ')</option><option value="business"' + (t.use === "business" ? " selected" : "") + '>Business</option><option value="personal"' + (t.use === "personal" ? " selected" : "") + ">Household / personal</option></select></div>" : "") +
+    '<label class="row" style="font-size:15px;margin:4px 0 0"><input type="checkbox" id="txAll"> Use this for every ' + escapeHtml(t.merchant) + " transaction</label>" +
+    '<div class="modal-actions"><button class="btn-sm" data-action="close-modal">Cancel</button><button class="btn-primary" id="txSave">Save</button></div>');
+  document.getElementById("txSave").onclick = () => {
+    const cat = document.getElementById("txCat").value;
+    const useEl = document.getElementById("txUse"); const use = useEl ? useEl.value || null : null;
+    if (document.getElementById("txAll").checked) {
+      const key = t.merchant.toLowerCase();
+      let r = ruleFor(t.merchant);
+      if (!r) { r = newItem("rule", { merchant: key }); STATE.items.push(r); }
+      r.category = cat; r.use = use; touch(r);
+      items("txn").filter((x) => x.merchant.toLowerCase() === key && x.amount < 0).forEach((x) => { x.catSet = false; x.use = null; categorize(x); touch(x); });
+    } else { t.category = cat; t.catSet = true; t.use = use; touch(t); }
+    closeModal(); persist();
+  };
+}
+function openPlan(id) {
+  const p = id ? STATE.items.find((i) => i.id === id) : { provider: "Klarna", what: "", payment: "", every: "biweekly", left: "", next: todayISO(), account: "", status: "in progress" };
+  const accts = items("account");
+  openModal("<h3>" + (id ? "Edit plan" : "Add a plan") + '</h3><div class="grid2"><div class="field"><label>Provider</label><select id="plProv">' +
+    ["Klarna", "Affirm", "Shop Pay Installments", "Afterpay", "Zip", "PayPal Pay in 4", "Other"].map((x) => "<option" + (x === p.provider ? " selected" : "") + ">" + x + "</option>").join("") +
+    '</select></div><div class="field"><label>What it was for</label><input id="plWhat" value="' + escapeHtml(p.what) + '"></div></div>' +
+    '<div class="grid2"><div class="field"><label>Each payment</label><input id="plPay" inputmode="decimal" value="' + escapeHtml(p.payment) + '"></div><div class="field"><label>How often</label><select id="plEvery">' +
+    [["biweekly", "Every 2 weeks"], ["monthly", "Monthly"], ["weekly", "Weekly"]].map(([k, v]) => '<option value="' + k + '"' + (k === p.every ? " selected" : "") + ">" + v + "</option>").join("") + "</select></div></div>" +
+    '<div class="grid2"><div class="field"><label>Payments left</label><input id="plLeft" inputmode="numeric" value="' + escapeHtml(p.left) + '"></div><div class="field"><label>Next payment</label><input id="plNext" type="date" value="' + escapeHtml(p.next || "") + '"></div></div>' +
+    '<div class="field"><label>Charged to</label><select id="plAcct"><option value="">Not sure</option>' + accts.map((a) => '<option value="' + escapeHtml(a.last4) + '"' + (a.last4 === p.account ? " selected" : "") + ">" + escapeHtml(a.label) + "</option>").join("") + "</select></div>" +
+    '<div class="modal-actions">' + (id ? '<button class="btn-ghost" data-action="delete-plan" data-id="' + id + '">Remove</button>' : "") + '<button class="btn-sm" data-action="close-modal">Cancel</button><button class="btn-primary" id="plSave">Save</button></div>');
+  document.getElementById("plSave").onclick = () => {
+    const v = (x) => document.getElementById(x).value;
+    const fields = { provider: v("plProv"), what: v("plWhat").trim(), payment: round2(moneyNum(v("plPay"))), every: v("plEvery"), left: Math.max(0, parseInt(v("plLeft"), 10) || 0), next: v("plNext"), account: v("plAcct") };
+    if (!fields.payment) { toast("Enter the payment amount."); return; }
+    if (id) { Object.assign(p, fields); p.status = fields.left > 0 ? "in progress" : "done"; touch(p); }
+    else STATE.items.push(newItem("plan", Object.assign(fields, { status: fields.left > 0 ? "in progress" : "done" })));
+    closeModal(); persist();
+  };
+}
+function markPlanPaid(id) {
+  const p = STATE.items.find((i) => i.id === id); if (!p || p.status === "done") return;
+  p.left = Math.max(0, (Number(p.left) || 0) - 1);
+  if (p.next) {
+    const [y, m, d] = p.next.split("-").map(Number); const dt = new Date(y, m - 1, d);
+    if (p.every === "monthly") dt.setMonth(dt.getMonth() + 1); else dt.setDate(dt.getDate() + (STEP_DAYS[p.every] || 14));
+    p.next = dt.getFullYear() + "-" + String(dt.getMonth() + 1).padStart(2, "0") + "-" + String(dt.getDate()).padStart(2, "0");
+  }
+  if (p.left === 0) p.status = "done";
+  touch(p); persist();
+}
+function openPaydayView(id) {
+  const p = STATE.items.find((i) => i.id === id); if (!p) return;
+  const r = p.result;
+  openModal("<h3>" + escapeHtml(fmtDay(p.date)) + (p.client ? " · " + escapeHtml(p.client) : "") + "</h3>" + move("Payment", "", r.amount) + move("Tax savings", "", r.tax) + (r.crew ? move("Payroll account", "", r.crew) : "") + move("Operating", "", r.operating) +
+    r.people.map((x) => move(x.name, "Joint " + money(x.joint, 1) + " · personal " + money(x.personal, 1), x.pay)).join("") +
+    '<div class="modal-actions"><button class="btn-ghost" data-action="delete-payday" data-id="' + p.id + '">Remove</button><button class="btn-primary" data-action="close-modal">Close</button></div>');
+}
+
+function openWorkspace() {
+  openModal('<h3>Workspace</h3><p class="muted" style="margin-top:0">Each workspace keeps its own numbers.</p>' +
+    '<div class="card' + (DEVICE.workspace === "mine" ? " attn-card" : "") + '" style="cursor:pointer" data-action="ws-mine"><b>Mine</b><div class="hint">Private to whoever is signed in. Syncs to your own Google Drive app storage.</div></div>' +
+    '<div class="card' + (DEVICE.workspace === "family" ? " attn-card" : "") + '" style="cursor:pointer" data-action="ws-family"><b>Family' + (DEVICE.familyName ? " · " + escapeHtml(DEVICE.familyName) : "") + '</b><div class="hint">Shared. Both partners sign in with their own Google account and see the same numbers.</div></div>' +
+    '<div class="modal-actions">' + (DEVICE.workspace === "family" ? '<button class="btn-sm" data-action="family-setup">Family setup</button>' : "") + '<button class="btn-primary" data-action="close-modal">Done</button></div>');
+}
+
+async function openFamilySetup() {
+  let html = "<h3>Family workspace</h3>";
+  if (!DEVICE.familyWorkerUrl) {
+    html += '<p class="muted">The family workspace needs the Accounting Family Worker (one-time setup, see FAMILY-SETUP.md in the repo). Paste its URL here.</p><div class="field"><label>Family Worker URL</label><input id="fwUrl" placeholder="https://accounting-family.yourname.workers.dev"></div>' +
+      '<div class="modal-actions"><button class="btn-sm" data-action="close-modal">Cancel</button><button class="btn-primary" id="fwSave">Save</button></div>';
+    openModal(html);
+    document.getElementById("fwSave").onclick = () => { DEVICE.familyWorkerUrl = document.getElementById("fwUrl").value.trim(); saveDevice(); openFamilySetup(); };
+    return;
+  }
+  if (!Google.isConnected()) {
+    openModal(html + '<p class="muted">Sign in with Google first. Each partner uses their own account.</p><div class="modal-actions"><button class="btn-sm" data-action="close-modal">Cancel</button><button class="btn-primary" data-action="signin">Sign in with Google</button></div>');
+    return;
+  }
+  openModal(html + '<p class="hint">Checking your families…</p>');
+  try {
+    const res = await Family.list();
+    const fams = (res.data && res.data.families) || [];
+    html += fams.length ? '<div class="section-title">Your families</div>' + fams.map((f) => '<div class="card"><div class="row between"><div><b>' + escapeHtml(f.name) + '</b><div class="hint">' + escapeHtml((f.members || []).join(", ")) + '</div></div><button class="btn-sm" data-action="use-family" data-id="' + escapeHtml(f.id) + '" data-name="' + escapeHtml(f.name) + '">' + (f.id === DEVICE.familyId ? "In use" : "Use") + "</button></div></div>").join("")
+      : '<p class="muted">No family yet. Create one, then add your partner\'s Google email. When they sign in on their phone and pick Family, they\'ll see it.</p>';
+    html += '<div class="field"><label>Create a family</label><div class="row"><input id="famName" placeholder="Brown household" class="grow" style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:16px"><button class="btn-sm" id="famCreate">Create</button></div></div>';
+    if (DEVICE.familyId) html += '<div class="field"><label>Add your partner (their Google email)</label><div class="row"><input id="famInvite" type="email" class="grow" style="padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);font-size:16px"><button class="btn-sm" id="famAdd">Add</button></div></div>';
+    html += '<div class="modal-actions"><button class="btn-ghost" data-action="family-url">Change Worker URL</button><button class="btn-primary" data-action="close-modal">Done</button></div>';
+    openModal(html);
+    document.getElementById("famCreate").onclick = async () => {
+      const name = document.getElementById("famName").value.trim() || "Family";
+      try { const r = await Family.create(name); useFamily(r.data.id, r.data.name); openFamilySetup(); } catch (e) { toast(e.message); }
+    };
+    const add = document.getElementById("famAdd");
+    if (add) add.onclick = async () => {
+      const em = document.getElementById("famInvite").value.trim();
+      if (!/^\S+@\S+\.\S+$/.test(em)) { toast("Enter a Google email address."); return; }
+      try { await Family.invite(DEVICE.familyId, em); toast("Added " + em); openFamilySetup(); } catch (e) { toast(e.message); }
+    };
+  } catch (e) {
+    openModal(html + '<p class="attn">' + escapeHtml(e.message) + '</p><div class="modal-actions"><button class="btn-ghost" data-action="family-url">Change Worker URL</button><button class="btn-primary" data-action="close-modal">Close</button></div>');
+  }
+}
+function useFamily(id, name) {
+  DEVICE.familyId = id; DEVICE.familyName = name || "Family"; DEVICE.familyVersion = 0; saveDevice();
+  if (DEVICE.workspace !== "family") switchWorkspace("family"); else { render(); syncNow({ quiet: true }); }
+}
+
+function openSettings() {
+  const st = STATE.settings;
+  const accts = items("account");
+  const ownerRows = st.owners.map((o, i) =>
+    '<div class="card"><div class="grid2"><div class="field"><label>Name</label><input data-own="' + i + '" data-f="name" value="' + escapeHtml(o.name) + '"></div><div class="field"><label>Share of owner pay %</label><input data-own="' + i + '" data-f="share" inputmode="decimal" value="' + escapeHtml(o.share) + '"></div></div>' +
+    '<div class="grid2"><div class="field"><label>% of their pay to Joint</label><input data-own="' + i + '" data-f="jointPct" inputmode="decimal" value="' + escapeHtml(o.jointPct) + '"></div><div class="field"><label>Salary per payday (S-Corp)</label><input data-own="' + i + '" data-f="salary" inputmode="decimal" value="' + escapeHtml(o.salary || 0) + '"></div></div></div>').join("");
+  openModal('<h3>Settings</h3>' +
+    '<div class="section-title">Payday</div><div class="grid2"><div class="field"><label>Tax savings %</label><input id="sTax" inputmode="decimal" value="' + escapeHtml(st.taxPct) + '"></div><div class="field"><label>Keep in operating %</label><input id="sOp" inputmode="decimal" value="' + escapeHtml(st.operatingPct) + '"></div></div>' +
+    '<div class="hint" style="margin:-6px 0 10px">Set the tax percentage with your accountant. 25% is only a starting placeholder.</div>' +
+    '<label class="row" style="font-size:15px;margin-bottom:10px"><input type="checkbox" id="sScorp"' + (st.sCorp ? " checked" : "") + "> We're an S-Corp (owner salary runs through payroll)</label>" +
+    '<div class="section-title">Owners</div>' + ownerRows +
+    '<div class="section-title">Accounts</div>' + (accts.length ? accts.map((a) => '<div class="grid2"><div class="field"><label>' + escapeHtml(a.last4) + '</label><input data-acct="' + a.id + '" data-f="label" value="' + escapeHtml(a.label) + '"></div><div class="field"><label>Type</label><select data-acct="' + a.id + '" data-f="type">' + Object.entries(ACCOUNT_TYPES).map(([k, v]) => '<option value="' + k + '"' + (k === a.type ? " selected" : "") + ">" + v + "</option>").join("") + "</select></div></div>").join("") : '<div class="hint">Accounts appear here after you import a statement.</div>') +
+    '<div class="section-title">Look</div><div class="field"><select id="sTheme">' + [["light", "Light"], ["dark", "Dark"], ["bland", "Bland (low stimulation)"]].map(([k, v]) => '<option value="' + k + '"' + (DEVICE.theme === k ? " selected" : "") + ">" + v + "</option>").join("") + "</select></div>" +
+    '<div class="section-title">Google</div>' +
+    '<div class="field"><label>Google OAuth Client ID</label><input id="sClient" value="' + escapeHtml(DEVICE.googleClientId) + '"><div class="hint">Filled in from Adulting or Remembering if you use them on this device.</div></div>' +
+    (Google.isConnected() ? '<div class="row between"><span class="muted">Signed in' + (DEVICE.email ? " as " + escapeHtml(DEVICE.email) : "") + '</span><button class="btn-sm" data-action="signout">Sign out</button></div>' : '<button class="btn-sm" data-action="signin">Sign in with Google</button>') +
+    '<div class="field" style="margin-top:12px"><label>Family Worker URL</label><input id="sFam" value="' + escapeHtml(DEVICE.familyWorkerUrl) + '"></div>' +
+    '<div class="section-title">Backup</div><div class="row wrapline"><button class="btn-sm" data-action="export">Export backup</button><button class="btn-sm" data-action="import-backup">Restore backup</button></div>' +
+    '<div class="modal-actions"><button class="btn-sm" data-action="close-modal">Cancel</button><button class="btn-primary" id="sSave">Save</button></div>');
+  document.getElementById("sSave").onclick = () => {
+    const v = (x) => document.getElementById(x).value;
+    st.taxPct = Math.max(0, Number(v("sTax")) || 0); st.operatingPct = Math.max(0, Number(v("sOp")) || 0); st.sCorp = document.getElementById("sScorp").checked;
+    document.querySelectorAll("[data-own]").forEach((el) => { const o = st.owners[+el.dataset.own]; const f = el.dataset.f; o[f] = f === "name" ? el.value.trim() || o[f] : Math.max(0, Number(el.value) || 0); });
+    document.querySelectorAll("[data-acct]").forEach((el) => { const a = STATE.items.find((i) => i.id === el.dataset.acct); if (a) { a[el.dataset.f] = el.value.trim() || a[el.dataset.f]; touch(a); } });
+    DEVICE.theme = v("sTheme"); DEVICE.googleClientId = v("sClient").trim(); DEVICE.familyWorkerUrl = v("sFam").trim(); saveDevice(); applyTheme();
+    if (DEVICE.googleClientId && !Google.token()) Google.init(DEVICE.googleClientId).catch(() => {});
+    closeModal(); persist(); toast("Saved");
+  };
+}
+
+function exportBackup() {
+  const blob = new Blob([JSON.stringify(STATE, null, 1)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "accounting-" + DEVICE.workspace + "-" + todayISO() + ".json"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+async function restoreBackup(file) {
+  try {
+    const data = JSON.parse(await file.text());
+    if (!data || !Array.isArray(data.items)) throw new Error("That file isn't an Accounting backup.");
+    STATE = mergeStates(STATE, data); persist(); toast("Restored " + data.items.length + " items");
+  } catch (e) { toast(e.message || "Couldn't read that backup."); }
+}
+
+/* ===========================================================================
+   10. EVENTS: one delegated listener keyed on data-action
+   =========================================================================== */
+document.addEventListener("click", (ev) => {
+  const el = ev.target.closest("[data-action]");
+  if (!el) return;
+  const a = el.dataset.action, id = el.dataset.id;
+  if (a === "close-modal-backdrop") { if (ev.target === el) closeModal(); return; }
+  if (a === "close-modal") closeModal();
+  else if (a === "tab") { currentTab = id; view.showAll = false; render(); window.scrollTo(0, 0); }
+  else if (a === "import") document.getElementById("fileInput").click();
+  else if (a === "settings") openSettings();
+  else if (a === "workspace") openWorkspace();
+  else if (a === "ws-mine") { closeModal(); switchWorkspace("mine"); }
+  else if (a === "ws-family") { closeModal(); switchWorkspace("family"); }
+  else if (a === "family-setup") openFamilySetup();
+  else if (a === "family-url") { DEVICE.familyWorkerUrl = ""; saveDevice(); openFamilySetup(); }
+  else if (a === "use-family") { closeModal(); useFamily(id, el.dataset.name); }
+  else if (a === "signin") { closeModal(); signIn(); }
+  else if (a === "signout") { closeModal(); signOut(); }
+  else if (a === "sync") syncNow({ quiet: false });
+  else if (a === "edit-txn") openTxn(id);
+  else if (a === "show-all") { view.showAll = true; render(); }
+  else if (a === "see-txns") { currentTab = "txns"; view.category = "all"; render(); }
+  else if (a === "add-plan") openPlan(null);
+  else if (a === "edit-plan") openPlan(id);
+  else if (a === "plan-paid") markPlanPaid(id);
+  else if (a === "delete-plan") { removeItem(id); closeModal(); persist(); }
+  else if (a === "open-payday") openPaydayView(id);
+  else if (a === "delete-payday") { removeItem(id); closeModal(); persist(); }
+  else if (a === "save-payday") {
+    const r = computePayday(moneyNum(payDraft.amount), moneyNum(payDraft.crew), STATE.settings);
+    STATE.items.push(newItem("payday", { date: payDraft.date || todayISO(), amount: r.amount, client: payDraft.client.trim(), crew: r.crew, result: r }));
+    payDraft = { amount: "", crew: "", client: "", date: "" };
+    persist(); toast("Payday saved");
+  }
+  else if (a === "export") exportBackup();
+  else if (a === "import-backup") document.getElementById("backupInput").click();
+});
+document.addEventListener("input", (ev) => {
+  const t = ev.target;
+  if (t.id === "pdAmount" || t.id === "pdCrew" || t.id === "pdClient" || t.id === "pdDate") {
+    payDraft = { amount: val("pdAmount"), crew: val("pdCrew"), client: val("pdClient"), date: val("pdDate") };
+    if (t.id === "pdClient" || t.id === "pdDate") return;
+    const pos = t.selectionStart; render();
+    const again = document.getElementById(t.id); if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (e) { /* ignore */ } }
+  }
+  if (t.dataset && t.dataset.change === "q") {
+    view.q = t.value; view.showAll = false; const pos = t.selectionStart; render();
+    const again = document.querySelector('[data-change="q"]'); if (again) { again.focus(); try { again.setSelectionRange(pos, pos); } catch (e) { /* ignore */ } }
+  }
+});
+function val(id) { const e = document.getElementById(id); return e ? e.value : ""; }
+document.addEventListener("change", (ev) => {
+  const t = ev.target;
+  if (t.id === "fileInput") { importFiles(t.files); t.value = ""; return; }
+  if (t.id === "backupInput") { if (t.files[0]) restoreBackup(t.files[0]); t.value = ""; return; }
+  const c = t.dataset && t.dataset.change;
+  if (c === "month" || c === "account" || c === "category") { view[c] = t.value; view.showAll = false; render(); }
+});
+document.addEventListener("dragover", (ev) => { if (ev.dataTransfer && [...(ev.dataTransfer.types || [])].includes("Files")) ev.preventDefault(); });
+document.addEventListener("drop", (ev) => { if (ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files.length) { ev.preventDefault(); importFiles(ev.dataTransfer.files); } });
+
+/* ===========================================================================
+   11. STARTUP
+   =========================================================================== */
+applyTheme();
+render();
+if (DEVICE.googleClientId) {
+  Google.init(DEVICE.googleClientId).then(() => {
+    if (Google.isConnected()) syncNow({ quiet: true });
+    else if (DEVICE.email) Google.ensureToken().then((ok) => { if (ok) { render(); syncNow({ quiet: true }); } });
+  }).catch(() => {});
+}
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("./sw.js").catch(() => {});
+window.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible" && Google.isConnected()) syncNow({ quiet: true }); });
+</script>
+</body>
+</html>
